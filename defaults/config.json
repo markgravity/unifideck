@@ -145,6 +145,17 @@
       "butler_db": "~/.local/share/unifideck/butler/butler.db",
       "default_install_root": "~/Games/itch",
       "stall_timeout_seconds": 900
+    },
+    "ankergames": {
+      "base_url": "https://ankergames.net/api/v1",
+      "launcher_version": "0.1.30",
+      "session_file": "~/.config/unifideck/ankergames_session.json",
+      "device_key_file": "~/.config/unifideck/ankergames_device_key.json",
+      "download_dir": "~/.local/share/unifideck/ankergames_downloads",
+      "default_install_root": "~/Games/AnkerGames",
+      "device_name": "unifideck",
+      "poll_timeout_s": 600,
+      "authorize_max_wait_s": 30
     }
   },
   "metadata": {
