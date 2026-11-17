@@ -155,7 +155,10 @@
       "default_install_root": "~/Games/AnkerGames",
       "device_name": "unifideck",
       "poll_timeout_s": 600,
-      "authorize_max_wait_s": 30
+      "authorize_max_wait_s": 30,
+      "launcher_appimage_path": "~/Applications/AnkerLauncher-0.1.30-x86_64.AppImage",
+      "launcher_games_root": "~/Downloads/AnkerGames/Games",
+      "wrapper_install_timeout_s": 1800
     }
   },
   "metadata": {

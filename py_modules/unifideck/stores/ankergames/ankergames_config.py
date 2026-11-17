@@ -22,6 +22,9 @@ _DEFAULT_INSTALL_ROOT = "~/Games/AnkerGames"
 _DEFAULT_DEVICE_NAME = "unifideck"
 _DEFAULT_POLL_TIMEOUT_S = 600
 _DEFAULT_AUTHORIZE_MAX_WAIT_S = 30
+_DEFAULT_LAUNCHER_APPIMAGE_PATH = "~/Applications/AnkerLauncher-0.1.30-x86_64.AppImage"
+_DEFAULT_LAUNCHER_GAMES_ROOT = "~/Downloads/AnkerGames/Games"
+_DEFAULT_WRAPPER_INSTALL_TIMEOUT_S = 1800
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,10 @@ class AnkerGamesConfig:
     device_name: str = _DEFAULT_DEVICE_NAME
     poll_timeout_s: int = _DEFAULT_POLL_TIMEOUT_S
     authorize_max_wait_s: int = _DEFAULT_AUTHORIZE_MAX_WAIT_S
+    # ── wrapper install (drives the real client; see wrapper_install.py) ──
+    launcher_appimage_path: str = _DEFAULT_LAUNCHER_APPIMAGE_PATH
+    launcher_games_root: str = _DEFAULT_LAUNCHER_GAMES_ROOT
+    wrapper_install_timeout_s: int = _DEFAULT_WRAPPER_INSTALL_TIMEOUT_S
 
     @property
     def user_agent(self) -> str:
@@ -67,5 +74,14 @@ def load_config(config: ConfigManager | None) -> AnkerGamesConfig:
         poll_timeout_s=int(raw.get("poll_timeout_s", defaults.poll_timeout_s)),
         authorize_max_wait_s=int(
             raw.get("authorize_max_wait_s", defaults.authorize_max_wait_s),
+        ),
+        launcher_appimage_path=raw.get(
+            "launcher_appimage_path", defaults.launcher_appimage_path,
+        ),
+        launcher_games_root=raw.get(
+            "launcher_games_root", defaults.launcher_games_root,
+        ),
+        wrapper_install_timeout_s=int(
+            raw.get("wrapper_install_timeout_s", defaults.wrapper_install_timeout_s),
         ),
     )

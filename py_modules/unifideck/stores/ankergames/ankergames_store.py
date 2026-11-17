@@ -16,10 +16,12 @@ from unifideck.core.types import AuthResult, Game, InstallResult, Result, StoreI
 from unifideck.stores.shared.store_base import StoreBase
 
 from .ankergames_config import load_config
+from .atspi_driver import AtspiUnavailable
 from .auth import AnkerGamesAuth
 from .catalog import AnkerGamesCatalog, AnkerGamesFetchError
 from .download import AnkerGamesArchiveSource, ProgressCallback
 from .install import AnkerGamesInstaller
+from .wrapper_install import AnkerGamesWrapperInstaller
 
 if TYPE_CHECKING:
     from unifideck.config import ConfigManager
@@ -57,6 +59,11 @@ class AnkerGamesStore(StoreBase):
         self._installer = AnkerGamesInstaller(
             source=self._source, default_install_root=self._config.default_install_root,
         )
+        self._wrapper_installer = AnkerGamesWrapperInstaller(
+            launcher_appimage_path=self._config.launcher_appimage_path,
+            games_root=self._config.launcher_games_root,
+            install_timeout_s=self._config.wrapper_install_timeout_s,
+        )
 
     # ── StoreBase abstract methods ──────────────────────────────────
 
@@ -93,6 +100,42 @@ class AnkerGamesStore(StoreBase):
         self, game_id: str, base_path: str | None = None,
         progress_cb: ProgressCallback | None = None, **kwargs: Any,
     ) -> InstallResult:
+        """Install *game_id*.
+
+        Goes straight to the wrapper path (drives the real client — see
+        ``wrapper_install.py``), because the direct-API path always 403s:
+        the CDN's ``X-AG-Proof`` header could not be reverse-engineered
+        (``README.md``). The direct path (:meth:`_install_game_direct`)
+        is kept, not deleted, as a documented, truthfully-failing
+        reference of everything that *does* work end to end (auth,
+        catalog, ``/downloads/{id}/authorize``) — useful if the header is
+        ever cracked, or for anyone verifying this project's claims.
+        """
+        detail = await self._catalog.fetch_detail(game_id)
+        title = (detail or {}).get("title")
+        if not isinstance(title, str) or not title:
+            return InstallResult(
+                success=False, error=f"could not resolve a title for {game_id!r}",
+                store=STORE_NAME, game_id=game_id,
+            )
+        try:
+            return await self._wrapper_installer.install_game(game_id, title)
+        except AtspiUnavailable as exc:
+            logger.warning(
+                "[AnkerGamesStore] wrapper install unavailable (%s); "
+                "falling back to the direct API path, which is known to 403", exc,
+            )
+            return await self._install_game_direct(game_id, base_path, progress_cb, **kwargs)
+
+    async def _install_game_direct(
+        self, game_id: str, base_path: str | None = None,
+        progress_cb: ProgressCallback | None = None, **kwargs: Any,
+    ) -> InstallResult:
+        """The reverse-engineered direct-API path. Always 403s at download time.
+
+        See ``README.md``'s "CONFIRMED GAP" section — every step up to the
+        final CDN GET is live-verified against the real server.
+        """
         return await self._installer.install_game(
             game_id,
             install_path=base_path or kwargs.get("install_path"),

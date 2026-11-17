@@ -117,6 +117,71 @@ exactly what `README.md` documents. `install_game` surfaces this specific
 one-function change in `download.py`'s `_authorize`/`acquire` — add
 whatever header the real signature turns out to be — not a rewrite.
 
+## RESOLVED (2026-11-17): `install_game` works — via a wrapper install, not the header
+
+The `X-AG-Proof` algorithm itself was never recovered. Three more
+independent passes after the gap above — live `gdb` breakpoints on the
+running client (confirmed the value is *not* the authorize URL, *not* an
+Ed25519 signature of it, and *not* an IP-exactness check; all three tested
+against the real server and all three 403), byte-exact fingerprinting of a
+locally-rebuilt `ring 0.17.14` against the stripped target binary
+(confirmed real Ed25519/X25519/SHA-512 code exists and roughly where, but
+the two call sites reachable from the fingerprinted primitives turned out
+to be TLS's own X25519 key exchange and a PKCS8-key-load consistency
+check, not a per-request signer), and SHA-512-constant-table call-graph
+tracing — all failed to pin down the exact bytes. See the project's session
+history for the full trace; it is not reproduced here because none of it
+leads anywhere actionable.
+
+`install_game` therefore does not use the direct-API path
+(`_install_game_direct`, kept as a truthfully-failing reference) by
+default. It instead drives the **real** Anker Launcher client — which
+computes the header correctly, because it has the real source — through
+its own UI, the same shape as Unifideck's other wrapper stores
+(Battle.net, Ubisoft): the vendor's own client does the one step only it
+can do, and this connector adopts whatever lands on disk afterward.
+
+Implementation (`atspi_driver.py` + `wrapper_install.py` +
+`wrapper_env.py`):
+
+1. Launch the real client (`stores.ankergames.launcher_appimage_path`) if
+   it is not already running, borrowing `WAYLAND_DISPLAY`/`DISPLAY`/
+   `DBUS_SESSION_BUS_ADDRESS` from a live desktop-session process
+   (`plasmashell`, `kwin_wayland`, `gamescope-session`, or `steam`) the
+   same way `stores/ubisoft/binaries.py` borrows a display for Wine.
+2. Drive it through **AT-SPI** (`org.a11y.Atspi`, the same accessibility
+   bus screen readers use) — find the "Browse" button, the search box,
+   the matching result, the "Download"/"Install" button, by their
+   accessible *name*, not a screen coordinate. This is what makes it
+   reliable across window size/theme/layout: a query like "the button
+   named `'Download, 328 MB · direct'`" cannot land on the wrong widget
+   the way `x,y` can.
+3. One widget resists AT-SPI's `EditableText` interface — the search box
+   is exposed as role `embedded` wrapping an empty `page` (a web-content
+   embedding boundary AT-SPI does not bridge the way it does plain
+   buttons elsewhere in the same app). For that one step only, the driver
+   focuses the widget via AT-SPI (`Component.grab_focus` — still by
+   object reference, not a click) and then types through `ydotool`,
+   rather than falling back to coordinate-based automation.
+4. Poll the real client's own games directory
+   (`stores.ankergames.launcher_games_root`) for a new subdirectory
+   carrying its `.anker-installation.json` completion marker, then
+   resolve an executable and write this connector's *own* marker
+   (`markers.py`) — so `get_installed_path`/`get_game_size`/uninstall
+   never need to know an install happened this way rather than through
+   `download.py`.
+
+Verified live end-to-end on 2026-11-17 (Bazzite, KDE desktop session):
+`AnkerGamesStore.install_game("dungeonbound")` → real "Dungeonbound"
+files landing on disk, a correct `exe_path`
+(`.../Dungeonbound/dungeonbound.exe`), and `get_library()` reporting it
+installed afterward — through this connector's own code, not a manual
+click in the official client.
+
+Needs a Linux desktop session this process can reach (AT-SPI + a
+compositor) — this path does not work headless, same constraint every
+other wrapper store in this project already has for its vendor client.
+
 ## What this connector does NOT cover
 
 - Library/ownership semantics: AnkerGames has no purchase/ownership model —
