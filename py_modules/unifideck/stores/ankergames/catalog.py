@@ -2,13 +2,16 @@
 
 AnkerGames has no purchase/ownership model: ``GET /games`` is the whole
 *catalog* (every title the site hosts, 2,213 at capture time), not what one
-account owns. The closest thing to a per-account library is ``GET
-/library`` — the games the user has explicitly added/adopted on the
-website or in the launcher — which read back empty for the account used to
-reverse-engineer this (see ``README.md``). This reader therefore follows
-``/library``, the way every other store here returns *owned* games, not the
-whole storefront; a user who wants to browse the full catalog does that on
-ankergames.net itself.
+account owns. ``GET /library`` — the games a user explicitly added/adopted
+on the website or in the launcher — read back empty for the account used to
+reverse-engineer this (see ``README.md``), and is this store's actual
+"owned" list, but an empty list there means Unifideck's library view has
+nothing to show an "Install" button on, same problem GameVault's self-hosted
+catalog would have if it only showed owned games. GameVault's own
+``local_catalog.py`` resolves this by treating "every game in the vault" as
+the library; this store mirrors that choice and reads the full ``/games``
+catalog instead of ``/library`` — anyone signed in can download anything,
+so there is no "ownership" to gate a browsable list behind.
 
 Mirrors ``stores/gamevault/library.py``'s split: a thin ``fetch`` that
 raises rather than truncates on failure, kept separate from the
@@ -30,13 +33,23 @@ logger = logging.getLogger(__name__)
 
 STORE_NAME = "ankergames"
 
+#: Page size for ``GET /games`` — the pagination style observed uses
+#: ``meta.next_cursor``, not an offset, so this just bounds how many round
+#: trips a full-catalog fetch costs (2,213 games / 200 per page ≈ 12 pages).
+_PAGE_SIZE = 200
+
+#: Hard stop on pagination round trips, so a server bug that never clears
+#: ``next_cursor`` can't loop forever (12 pages observed at capture time；
+#: 50 leaves generous headroom for catalog growth).
+_MAX_PAGES = 50
+
 
 class AnkerGamesFetchError(RuntimeError):
-    """The library could not be read — unknown, not "owns nothing"."""
+    """The catalog could not be read — unknown, not "catalog is empty"."""
 
 
 class AnkerGamesCatalog:
-    """Reads ``/library`` and maps it to :class:`Game` records."""
+    """Reads the full ``/games`` catalog and maps it to :class:`Game` records."""
 
     def __init__(self, auth: AnkerGamesAuth) -> None:
         self._auth = auth
@@ -44,21 +57,30 @@ class AnkerGamesCatalog:
     async def fetch(self) -> list[Game]:
         if not self._auth.is_authenticated():
             raise AnkerGamesFetchError("not authenticated")
-        try:
-            status, body = await self._auth.client.get("/library")
-        except Exception as exc:
-            raise AnkerGamesFetchError(str(exc)) from exc
-        if status != 200 or not isinstance(body, dict):
-            raise AnkerGamesFetchError(f"GET /library returned {status}: {body!r}")
-        entries = body.get("data")
-        if not isinstance(entries, list):
-            raise AnkerGamesFetchError("GET /library: unexpected body shape")
         games: list[Game] = []
-        for entry in entries:
-            game = _map_entry(entry)
-            if game is not None:
-                games.append(game)
-        logger.info("[AnkerGamesCatalog] %d game(s) in library", len(games))
+        cursor: str | None = None
+        for _ in range(_MAX_PAGES):
+            params: dict[str, Any] = {"per_page": _PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                status, body = await self._auth.client.get("/games", params=params)
+            except Exception as exc:
+                raise AnkerGamesFetchError(str(exc)) from exc
+            if status != 200 or not isinstance(body, dict):
+                raise AnkerGamesFetchError(f"GET /games returned {status}: {body!r}")
+            entries = body.get("data")
+            if not isinstance(entries, list):
+                raise AnkerGamesFetchError("GET /games: unexpected body shape")
+            for entry in entries:
+                game = _map_entry(entry)
+                if game is not None:
+                    games.append(game)
+            meta = body.get("meta") if isinstance(body.get("meta"), dict) else {}
+            cursor = meta.get("next_cursor")
+            if not cursor or not entries:
+                break
+        logger.info("[AnkerGamesCatalog] %d game(s) in catalog", len(games))
         return games
 
     async def fetch_detail(self, slug: str) -> dict[str, Any] | None:

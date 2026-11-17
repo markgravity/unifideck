@@ -28,6 +28,7 @@ import aiohttp
 from .ankergames_config import AnkerGamesConfig
 from .auth import AnkerGamesAuth
 from .catalog import AnkerGamesCatalog
+from .http import SSL_CONTEXT
 from .http import AnkerGamesThrottleError
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,8 @@ async def _download_archive(
     title: str,
     progress_callback: ProgressCallback | None,
 ) -> AcquiredArchive:
-    async with aiohttp.ClientSession() as session:
+    connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+    async with aiohttp.ClientSession(connector=connector) as session:
         async with session.get(
             url, timeout=aiohttp.ClientTimeout(total=0), allow_redirects=True,
         ) as resp:

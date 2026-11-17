@@ -8,15 +8,28 @@ are attached exactly once rather than at every call site.
 from __future__ import annotations
 
 import logging
+import ssl
 from typing import Any
 
 import aiohttp
+import certifi
 
 from .ankergames_config import AnkerGamesConfig
 
 logger = logging.getLogger(__name__)
 
 _LOG_PREFIX = "[AnkerGames http]"
+
+#: Decky's bundled Python has no OS CA trust store wired up, so
+#: aiohttp's default SSL context fails every HTTPS request with
+#: "unable to get local issuer certificate" even though the exact
+#: same code works fine under a plain system `python3` (which does
+#: have one). `certifi`'s vendored bundle is what every other
+#: HTTPS-calling dependency here already ends up trusting transitively;
+#: building the context from it explicitly is what makes this client
+#: work inside the actual plugin process, not just in a standalone
+#: test script.
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 
 class AnkerGamesApiError(RuntimeError):
@@ -87,7 +100,8 @@ class AnkerGamesClient:
         shown to the user, not treated as transport failures.
         """
         url = f"{self._config.base_url}{path}"
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.request(
                 method,
                 url,

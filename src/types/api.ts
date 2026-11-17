@@ -369,7 +369,8 @@ export type StoreId =
   | "ubisoft"
   | "battlenet"
   | "gamevault"
-  | "itch";
+  | "itch"
+  | "ankergames";
 
 /**
  * Per-store availability + auth state, returned by

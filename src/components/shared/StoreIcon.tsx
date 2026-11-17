@@ -36,6 +36,7 @@ const STORE_ICONS: Record<StoreId, StoreGlyph> = {
   battlenet: SiBattledotnet,
   gamevault: GameVaultIcon,
   itch: SiItchdotio,
+  ankergames: FaGamepad,
 };
 
 /**

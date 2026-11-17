@@ -80,4 +80,10 @@ export const STORE_VISUALS: Record<StoreId, StoreVisual> = {
     brand_color: "#fa5c5c",
     icon_path: "/assets/itch.svg",
   },
+  ankergames: {
+    id: "ankergames",
+    display_name: "AnkerGames",
+    brand_color: "#f5a623",
+    icon_path: "/assets/ankergames.svg",
+  },
 };
