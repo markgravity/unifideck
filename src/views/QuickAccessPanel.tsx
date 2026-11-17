@@ -63,10 +63,11 @@ import {
   PluginUpdater,
 } from "../components/settings";
 import { DownloadsTab } from "../components/downloads";
+import { AnkerGamesBrowseTab } from "../components/ankergames/AnkerGamesBrowseTab";
 import { QamTabLabel } from "./QamTabLabel";
 
-/** The two Quick-Access tabs. */
-type ActiveTab = "settings" | "downloads";
+/** The three Quick-Access tabs. */
+type ActiveTab = "settings" | "downloads" | "ankergames";
 
 /** Last-viewed tab persisted across QAM mount/unmount. */
 let persistentActiveTab: ActiveTab = "settings";
@@ -202,6 +203,12 @@ export const QuickAccessPanel: FC = () => {
             title: <QamTabLabel text={downloadsLabel} />,
             bTitleAlreadyLocalized: true,
             content: <DownloadsTab />,
+          },
+          {
+            id: "ankergames",
+            title: <QamTabLabel text={t("tabs.ankergames")} />,
+            bTitleAlreadyLocalized: true,
+            content: <AnkerGamesBrowseTab />,
           },
         ]}
       />

@@ -92,6 +92,40 @@ class AnkerGamesCatalog:
         data = body.get("data")
         return data if isinstance(data, dict) else None
 
+    async def fetch_home_sections(self) -> dict[str, list[dict[str, Any]]]:
+        """``GET /home`` — the site's own curated categories.
+
+        Mirrors what ankergames.net's homepage shows (Trending, Most
+        Downloaded, Updated This Week, ...) so the frontend's browse tab can
+        offer the same "Spotlight / Trending / Popular" shape as a real
+        storefront, rather than just the flat 2,219-title library list
+        :meth:`fetch` returns. ``game_of_the_day`` is the one section the API
+        hands back as a single object instead of a list — normalized here to
+        a one-item list so every section the frontend reads has the same
+        shape.
+        """
+        if not self._auth.is_authenticated():
+            raise AnkerGamesFetchError("not authenticated")
+        try:
+            status, body = await self._auth.client.get("/home")
+        except Exception as exc:
+            raise AnkerGamesFetchError(str(exc)) from exc
+        if status != 200 or not isinstance(body, dict):
+            raise AnkerGamesFetchError(f"GET /home returned {status}: {body!r}")
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise AnkerGamesFetchError("GET /home: unexpected body shape")
+        sections: dict[str, list[dict[str, Any]]] = {}
+        for key, value in data.items():
+            if isinstance(value, dict):
+                value = [value]
+            if not isinstance(value, list):
+                continue
+            sections[key] = [
+                s for s in (_summarize_entry(e) for e in value) if s is not None
+            ]
+        return sections
+
 
 def _map_entry(entry: Any) -> Game | None:
     """One ``/library`` row → a :class:`Game`.
@@ -125,3 +159,26 @@ def _map_entry(entry: Any) -> Game | None:
             "version_label": version.get("label"),
         },
     )
+
+
+def _summarize_entry(entry: Any) -> dict[str, Any] | None:
+    """One ``/home`` section row → the small dict the browse tab renders.
+
+    Deliberately NOT a :class:`Game` (these rows are catalog entries for
+    browsing/installing, not library rows SyncService would treat as owned
+    games) — a separate, minimal shape so the two concepts can't be mixed up
+    at a call site.
+    """
+    if not isinstance(entry, dict):
+        return None
+    slug = entry.get("slug")
+    title = entry.get("title")
+    if not isinstance(slug, str) or not isinstance(title, str):
+        return None
+    size_gb = entry.get("size_gb")
+    return {
+        "slug": slug,
+        "title": title,
+        "poster": entry.get("poster"),
+        "size_gb": size_gb if isinstance(size_gb, int | float) else None,
+    }

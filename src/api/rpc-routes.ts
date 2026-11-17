@@ -66,6 +66,8 @@ export const rpcRoutes = {
   clearDownloadHistory: "clear_download_history",
   getAvailableUpdates: "get_available_updates",
   updateGame: "update_game",
+  // AnkerGames curated browse sections (AnkerGamesBrowseRPCMixin)
+  getAnkerGamesBrowseSections: "get_ankergames_browse_sections",
   // A game paid for but not yet claimed (itch.io bundles): arm the claim
   // page before the shop window opens, check the claim once it closes.
   beginStoreClaim: "begin_store_claim",

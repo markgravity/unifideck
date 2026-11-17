@@ -73,6 +73,7 @@ from unifideck.config.user_config_path import resolve_user_config_path  # noqa: 
 from unifideck.rpc import auto_wrap_rpc_methods  # noqa: E402
 from unifideck.rpc.mixins.account import AccountRPCMixin  # noqa: E402
 from unifideck.rpc.mixins.achievements import AchievementsRPCMixin  # noqa: E402
+from unifideck.rpc.mixins.ankergames_browse import AnkerGamesBrowseRPCMixin  # noqa: E402
 from unifideck.rpc.mixins.action import ActionRPCMixin  # noqa: E402
 from unifideck.rpc.mixins.auth_shortcuts import AuthShortcutsRPCMixin  # noqa: E402
 from unifideck.rpc.mixins.cloud_save import CloudSaveRPCMixin  # noqa: E402
@@ -115,6 +116,7 @@ class Plugin(
     AchievementsRPCMixin,
     UpdaterRPCMixin,
     XboxPcRPCMixin,
+    AnkerGamesBrowseRPCMixin,
 ):
     """The Decky Loader plugin class.
 

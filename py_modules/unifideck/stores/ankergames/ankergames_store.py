@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from unifideck.core.types import AuthResult, Game, InstallResult, Result, StoreInfo
+from unifideck.stores.shared.installed_path import install_path_from_record
 from unifideck.stores.shared.store_base import StoreBase
 
 from .ankergames_config import load_config
@@ -163,9 +164,20 @@ class AnkerGamesStore(StoreBase):
         return []
 
     async def get_installed_path(self, game_id: str) -> str | None:
-        info = self._installer.get_install_info(game_id)
-        path = (info or {}).get("install_path")
-        return path if isinstance(path, str) and path else None
+        return install_path_from_record(self._installer.get_install_info(game_id))
 
     async def get_game_size(self, game_id: str) -> int | None:
         return await self._installer.get_game_size(game_id)
+
+    async def get_browse_sections(self) -> dict[str, list[dict[str, Any]]]:
+        """Curated categories for the browse tab (see ``catalog.fetch_home_sections``).
+
+        Returns ``{}`` rather than raising on failure — this backs a UI tab,
+        not an install path, and an empty browse tab is a far better failure
+        mode than the whole Quick Access panel erroring out.
+        """
+        try:
+            return await self._catalog.fetch_home_sections()
+        except AnkerGamesFetchError:
+            logger.exception("[AnkerGamesStore] get_browse_sections failed")
+            return {}

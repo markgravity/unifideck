@@ -12,14 +12,13 @@ store's needs — same repo, same license, not imported across stores per
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import shutil
-import threading
 import zipfile
 from pathlib import Path
 
 from unifideck.stores.shared.cli_install_helpers import terminate_process_tree
+from unifideck.stores.shared.zip_extract import extract_zip_interruptible
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ async def extract_archive(archive: Path, dest: Path) -> None:
         raise RuntimeError(f"AnkerGames: unknown archive format: {archive.name}")
     await asyncio.to_thread(dest.mkdir, parents=True, exist_ok=True)
     if fmt == _ARCH_ZIP and not await asyncio.to_thread(_zip_needs_tool, archive):
-        await _extract_zip_interruptible(archive, dest)
+        await extract_zip_interruptible(archive, dest)
         return
     await _extract_with_tool(archive, dest)
 
@@ -71,26 +70,6 @@ async def extract_archive(archive: Path, dest: Path) -> None:
 def _zip_needs_tool(archive: Path) -> bool:
     with zipfile.ZipFile(archive, "r") as zf:
         return any(info.compress_type not in _STDLIB_ZIP_METHODS for info in zf.infolist())
-
-
-async def _extract_zip_interruptible(archive: Path, dest: Path) -> None:
-    stop = threading.Event()
-    task = asyncio.ensure_future(asyncio.to_thread(_extract_zip, archive, dest, stop))
-    try:
-        await asyncio.shield(task)
-    except asyncio.CancelledError:
-        stop.set()
-        with contextlib.suppress(BaseException):
-            await task
-        raise
-
-
-def _extract_zip(archive: Path, dest: Path, stop: threading.Event) -> None:
-    with zipfile.ZipFile(archive, "r") as zf:
-        for member in zf.infolist():
-            if stop.is_set():
-                return
-            zf.extract(member, str(dest))
 
 
 async def _extract_with_tool(archive: Path, dest: Path) -> None:

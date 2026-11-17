@@ -2,7 +2,18 @@
   "_comment": "Unified catalog: merged from legacy src893/staging (28 top-level sections, 516 lines) + architectural-refactor additions (cloudSync, cloudSyncBehavior, launchLogs, library, navigation, playButton, saveFolder, security, settings, + new launcher toasts). The overlay policy is current-wins-on-conflict so new code's expected labels survive. Legacy top-level sections (accountSwitch, storageSettings, ubisoftAuth, etc.) are preserved as-is since their consumer components migrate unchanged.",
   "tabs": {
     "settings": "Settings",
-    "downloads": "Downloads"
+    "downloads": "Downloads",
+    "ankergames": "AnkerGames"
+  },
+  "ankergamesBrowse": {
+    "spotlight": "Spotlight",
+    "trending": "Trending",
+    "mostDownloaded": "Most Downloaded",
+    "updatedThisWeek": "Updated This Week",
+    "earlyAccess": "Early Access",
+    "comingSoon": "Coming Soon",
+    "gameOfTheDay": "Game of the Day",
+    "unavailable": "Couldn't load AnkerGames right now."
   },
   "auth": {
     "connect": "Connect",

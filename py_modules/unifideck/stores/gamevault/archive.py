@@ -35,7 +35,6 @@ directory first and sends those zips down the extractor ladder instead.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import shutil
 import threading
@@ -43,6 +42,7 @@ import zipfile
 from pathlib import Path
 
 from unifideck.stores.shared.cli_install_helpers import terminate_process_tree
+from unifideck.stores.shared.zip_extract import extract_zip_interruptible
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ async def extract_archive(archive: Path, dest: Path) -> None:
     if fmt == _ARCH_ZIP:
         foreign = await asyncio.to_thread(_zip_needs_tool, archive)
         if not foreign:
-            await _extract_zip_interruptible(archive, dest)
+            await extract_zip_interruptible(archive, dest, worker=_extract_zip)
             return
         logger.info(
             "%s %s uses zip compression method(s) %s the stdlib cannot read; "
@@ -192,33 +192,6 @@ def _zip_needs_tool(archive: Path) -> frozenset[int]:
             for info in zf.infolist()
             if info.compress_type not in _STDLIB_ZIP_METHODS
         )
-
-
-async def _extract_zip_interruptible(archive: Path, dest: Path) -> None:
-    """Unpack a zip in a worker thread that cancellation can actually stop.
-
-    A plain ``await asyncio.to_thread(...)`` cannot be interrupted: the
-    executor future refuses cancellation once the thread is running, so the
-    task only sees ``CancelledError`` *after* the whole archive has been
-    written — for a large game, minutes of ignoring the user's Cancel while
-    the extract runs to completion.
-
-    ``shield`` lets this coroutine take the cancellation immediately, so the
-    stop flag is set while the thread is still between members. The inner
-    task is then awaited so the thread is not left running loose behind a
-    returned coroutine, which costs at most one member's write.
-    """
-    stop = threading.Event()
-    task = asyncio.ensure_future(
-        asyncio.to_thread(_extract_zip, archive, dest, stop),
-    )
-    try:
-        await asyncio.shield(task)
-    except asyncio.CancelledError:
-        stop.set()
-        with contextlib.suppress(BaseException):
-            await task
-        raise
 
 
 def _extract_zip(archive: Path, dest: Path, stop: threading.Event) -> None:

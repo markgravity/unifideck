@@ -14,6 +14,7 @@ Per-mixin scope:
 * ``AccountRPCMixin``         — Steam account-switch detection + migration;
 * ``ActionRPCMixin``          — ``unifideck://`` URI dispatch;
 * ``AchievementsRPCMixin``    — game achievements + last-session summary;
+* ``AnkerGamesBrowseRPCMixin``— AnkerGames curated homepage sections for the browse tab;
 * ``AuthShortcutsRPCMixin``   — per-store auth-shortcut context + compat tool;
 * ``CloudSaveRPCMixin``       — cloud-save pull/push/status;
 * ``DownloadRPCMixin``        — download-queue management;
@@ -37,6 +38,7 @@ from __future__ import annotations
 from .account import AccountRPCMixin
 from .achievements import AchievementsRPCMixin
 from .action import ActionRPCMixin
+from .ankergames_browse import AnkerGamesBrowseRPCMixin
 from .auth_shortcuts import AuthShortcutsRPCMixin
 from .cloud_save import CloudSaveRPCMixin
 from .download import DownloadRPCMixin
@@ -58,6 +60,7 @@ __all__ = [
     "AccountRPCMixin",
     "AchievementsRPCMixin",
     "ActionRPCMixin",
+    "AnkerGamesBrowseRPCMixin",
     "AuthShortcutsRPCMixin",
     "CloudSaveRPCMixin",
     "DownloadRPCMixin",

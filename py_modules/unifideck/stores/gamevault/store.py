@@ -43,6 +43,7 @@ from unifideck.core.types import (
     Result,
     StoreInfo,
 )
+from unifideck.stores.shared.installed_path import install_path_from_record
 from unifideck.stores.shared.store_base import StoreBase
 
 from .auth import MODE_LOCAL, GameVaultAuth
@@ -289,9 +290,7 @@ class GameVaultStore(StoreBase):
         the games.map row is missing, which for this store is the situation
         the picker exists for.
         """
-        info = self._installer.get_install_info(game_id)
-        path = (info or {}).get("install_path")
-        return path if isinstance(path, str) and path else None
+        return install_path_from_record(self._installer.get_install_info(game_id))
 
     async def get_game_size(self, game_id: str) -> int | None:
         return await self._installer.get_game_size(game_id)
