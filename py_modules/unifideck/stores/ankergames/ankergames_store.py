@@ -62,6 +62,7 @@ class AnkerGamesStore(StoreBase):
         self._wrapper_installer = AnkerGamesWrapperInstaller(
             launcher_appimage_path=self._config.launcher_appimage_path,
             games_root=self._config.launcher_games_root,
+            downloads_staging_dir=self._config.launcher_downloads_staging_dir,
             install_timeout_s=self._config.wrapper_install_timeout_s,
         )
 
@@ -118,8 +119,12 @@ class AnkerGamesStore(StoreBase):
                 success=False, error=f"could not resolve a title for {game_id!r}",
                 store=STORE_NAME, game_id=game_id,
             )
+        size_gb = (detail or {}).get("size_gb")
+        total_bytes = int(size_gb * (1024**3)) if isinstance(size_gb, (int, float)) and size_gb > 0 else None
         try:
-            return await self._wrapper_installer.install_game(game_id, title)
+            return await self._wrapper_installer.install_game(
+                game_id, title, total_bytes=total_bytes, progress_callback=progress_cb,
+            )
         except AtspiUnavailable as exc:
             logger.warning(
                 "[AnkerGamesStore] wrapper install unavailable (%s); "

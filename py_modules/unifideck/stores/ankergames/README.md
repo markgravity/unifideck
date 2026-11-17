@@ -182,6 +182,28 @@ Needs a Linux desktop session this process can reach (AT-SPI + a
 compositor) — this path does not work headless, same constraint every
 other wrapper store in this project already has for its vendor client.
 
+### Download progress
+
+The real client's AT-SPI tree exposes no percentage or progress-bar role
+for a running download (checked across many live tree dumps — only
+static text like `"Install, 159 MB downloaded"`), so progress is instead
+read off the filesystem: the client stages the archive under
+`stores.ankergames.launcher_downloads_staging_dir`
+(`<staging_dir>/<file_id>-<hash>/<Slugified Title>-AnkerGames.zip` — note
+the file name is the client's *own* slugification, e.g. `"PICO PARK"` →
+`Pico-Park-AnkerGames.zip`, `"Zombies Aren't Real"` →
+`Zombies-Arent-Real-AnkerGames.zip`; matched against the connector's raw
+title with an alnum-only, lowercased prefix comparison, not a literal
+`startswith`) and `_wait_for_new_install` polls that file's growing size
+against `total_bytes` (from the catalog's own `size_gb`), emitting
+`{"phase": "downloading", "percentage": ...}` while it grows, then
+`{"phase": "extracting"}` once the staging file disappears but no
+`.anker-installation.json` marker exists yet, then `{"phase":
+"completed", "percentage": 100}`. Verified with a filesystem-level
+simulation on Bazzite (synthetic growing zip + marker) end to end;
+`percentage` is capped at 99 during the `downloading` phase so a caller
+never sees 100% before the marker actually confirms completion.
+
 ## What this connector does NOT cover
 
 - Library/ownership semantics: AnkerGames has no purchase/ownership model —

@@ -27,6 +27,7 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,8 @@ from unifideck.stores.shared.launch_target import find_executable
 from .atspi_driver import AnkerGamesAtspiDriver, AtspiUnavailable
 from .markers import save_install_info
 from .wrapper_env import detect_display_env
+
+ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,13 @@ class AnkerGamesWrapperInstallError(RuntimeError):
     """The real launcher could not be driven to a finished install."""
 
 
+def _normalize_for_match(text: str) -> str:
+    """Lowercase, alnum-only — collapses the client's own slugification
+    (spaces→hyphens, apostrophes dropped) and this connector's raw titles
+    onto the same comparable form. See :meth:`_find_staging_file`."""
+    return "".join(ch.lower() for ch in text if ch.isalnum())
+
+
 class AnkerGamesWrapperInstaller:
     """Launches, drives and polls the real AnkerGames client for one install."""
 
@@ -73,6 +83,7 @@ class AnkerGamesWrapperInstaller:
         *,
         launcher_appimage_path: str,
         games_root: str,
+        downloads_staging_dir: str | None = None,
         install_timeout_s: int = _DEFAULT_INSTALL_TIMEOUT_S,
     ) -> None:
         self._appimage = Path(launcher_appimage_path).expanduser()
@@ -81,29 +92,68 @@ class AnkerGamesWrapperInstaller:
         # two are reconciled in install_game(): we report whatever
         # directory the client actually used, not our own default).
         self._games_root = Path(games_root).expanduser()
+        # Where the real client stages an archive *before* extracting it
+        # (observed: ``<downloads_staging_dir>/<file_id>-<hash>/<Title>-
+        # AnkerGames.zip``) — the only place this project can read a live
+        # byte count from, since AT-SPI exposes no percentage/progress-bar
+        # role for this client (checked across many dumps: only static
+        # text like "Install, 159 MB downloaded", never a live counter).
+        self._staging_dir = (
+            Path(downloads_staging_dir).expanduser() if downloads_staging_dir
+            else self._games_root.parent / "Downloads"
+        )
         self._install_timeout_s = install_timeout_s
         self._driver: AnkerGamesAtspiDriver | None = None
 
     # ── public API ──────────────────────────────────────────────────
 
-    async def install_game(self, slug: str, title: str) -> InstallResult:
+    async def install_game(
+        self,
+        slug: str,
+        title: str,
+        *,
+        total_bytes: int | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> InstallResult:
         """Drive the real client to install *slug*, then adopt the result.
 
         ``title`` is the display name shown in the client's own UI — it is
         what we search for, since the client's accessible tree exposes
         titles, not our internal slugs (see ``README.md`` on why the two
-        can differ in punctuation/case).
+        can differ in punctuation/case). ``total_bytes`` (from the
+        catalog's own ``size_gb``) is what turns a staged archive's
+        growing size into a percentage; without it, progress still reports
+        bytes downloaded and phase, just no ``percentage``.
         """
-        try:
-            import asyncio
+        import asyncio
 
-            return await asyncio.to_thread(self._install_game_sync, slug, title)
+        loop = asyncio.get_running_loop()
+
+        def emit(payload: dict[str, Any]) -> None:
+            """Bridge: schedule the async callback from the worker thread.
+
+            ``_install_game_sync`` runs via ``asyncio.to_thread`` (AT-SPI
+            and ``time.sleep`` are blocking) and cannot ``await`` directly;
+            this hands the coroutine to the *original* event loop instead
+            of running it here. Fire-and-forget — a slow/stuck progress
+            consumer must never stall the install thread.
+            """
+            if progress_callback is None:
+                return
+            asyncio.run_coroutine_threadsafe(progress_callback(payload), loop)
+
+        try:
+            return await asyncio.to_thread(
+                self._install_game_sync, slug, title, total_bytes, emit,
+            )
         except AtspiUnavailable as exc:
             return InstallResult(success=False, error=str(exc), store="ankergames", game_id=slug)
 
     # ── the synchronous drive, run off the event loop ────────────────
 
-    def _install_game_sync(self, slug: str, title: str) -> InstallResult:
+    def _install_game_sync(
+        self, slug: str, title: str, total_bytes: int | None, emit: Callable[[dict[str, Any]], None],
+    ) -> InstallResult:
         before = self._snapshot_installed_dirs()
         try:
             self._ensure_launcher_running()
@@ -125,7 +175,7 @@ class AnkerGamesWrapperInstaller:
             logger.exception("%s drive failed for %r", _LOG_PREFIX, title)
             return InstallResult(success=False, error=str(exc), store="ankergames", game_id=slug)
 
-        new_dir = self._wait_for_new_install(before, title)
+        new_dir = self._wait_for_new_install(before, title, total_bytes, emit)
         if new_dir is None:
             return InstallResult(
                 success=False,
@@ -223,7 +273,10 @@ class AnkerGamesWrapperInstaller:
             return set()
         return {p.name for p in self._games_root.iterdir() if p.is_dir()}
 
-    def _wait_for_new_install(self, before: set[str], title: str) -> Path | None:
+    def _wait_for_new_install(
+        self, before: set[str], title: str, total_bytes: int | None,
+        emit: Callable[[dict[str, Any]], None],
+    ) -> Path | None:
         """Poll the real client's games root for a new, fully-written directory.
 
         A directory appearing is not enough — the client extracts into it
@@ -232,20 +285,77 @@ class AnkerGamesWrapperInstaller:
         sibling ``get_installed`` logic in other stores treats as the
         source of truth, here read from the vendor's own copy of it rather
         than ours).
+
+        Also emits progress: AT-SPI exposes no percentage/progress-bar role
+        for this client (checked across many live tree dumps — only static
+        text like "Install, 159 MB downloaded"), so the only reliable
+        signal left is the growing byte size of the archive the client
+        stages under ``downloads_staging_dir`` before extracting it.
         """
         deadline = time.monotonic() + self._install_timeout_s
+        last_phase = ""
+        last_bytes = -1
         while time.monotonic() < deadline:
             if self._games_root.is_dir():
                 now = {p.name for p in self._games_root.iterdir() if p.is_dir()}
                 for name in now - before:
                     candidate = self._games_root / name
                     if (candidate / _INSTALLATION_MARKER).is_file():
+                        emit({"phase": "completed", "percentage": 100})
                         return candidate
                 # Also match by title prefix for the case where the
                 # directory existed before (a previous partial attempt)
                 # and this run only completes it.
                 for name in now:
                     if name.startswith(title) and (self._games_root / name / _INSTALLATION_MARKER).is_file():
+                        emit({"phase": "completed", "percentage": 100})
                         return self._games_root / name
+
+            staging_file = self._find_staging_file(title)
+            if staging_file is not None:
+                downloaded = staging_file.stat().st_size
+                if downloaded != last_bytes:
+                    last_bytes = downloaded
+                    last_phase = "downloading"
+                    payload: dict[str, Any] = {"phase": "downloading", "downloaded_bytes": downloaded}
+                    if total_bytes:
+                        payload["total_bytes"] = total_bytes
+                        payload["percentage"] = min(99, round(downloaded / total_bytes * 100, 1))
+                    emit(payload)
+            elif last_phase == "downloading":
+                # The staging archive disappeared (consumed by extraction)
+                # but the install directory has no marker yet — the client
+                # is between "done downloading" and "done extracting".
+                last_phase = "extracting"
+                emit({"phase": "extracting"})
+
             time.sleep(_POLL_INTERVAL_S)
+        return None
+
+    def _find_staging_file(self, title: str) -> Path | None:
+        """The archive the real client is currently downloading, if any.
+
+        Observed layout: ``<staging_dir>/<file_id>-<hash>/<Slugified
+        Title>-AnkerGames.zip`` — the file name is the client's OWN
+        slugification (hyphens for spaces, apostrophes dropped, title-case
+        collapsed), e.g. title ``"PICO PARK"`` became
+        ``Pico-Park-AnkerGames.zip`` and ``"Zombies Aren't Real"`` became
+        ``Zombies-Arent-Real-AnkerGames.zip`` — observed on real installs,
+        so a plain ``startswith`` on the raw title never matches. Compared
+        instead on an alnum-only, lowercased prefix of both sides.
+        """
+        if not self._staging_dir.is_dir():
+            return None
+        needle = _normalize_for_match(title)
+        if not needle:
+            return None
+        try:
+            for entry in self._staging_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                for f in entry.iterdir():
+                    if f.is_file() and _normalize_for_match(f.stem).startswith(needle):
+                        return f
+        except OSError:
+            return None
         return None

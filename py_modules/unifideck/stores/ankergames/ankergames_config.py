@@ -24,6 +24,7 @@ _DEFAULT_POLL_TIMEOUT_S = 600
 _DEFAULT_AUTHORIZE_MAX_WAIT_S = 30
 _DEFAULT_LAUNCHER_APPIMAGE_PATH = "~/Applications/AnkerLauncher-0.1.30-x86_64.AppImage"
 _DEFAULT_LAUNCHER_GAMES_ROOT = "~/Downloads/AnkerGames/Games"
+_DEFAULT_LAUNCHER_DOWNLOADS_STAGING_DIR = "~/Downloads/AnkerGames/Downloads"
 _DEFAULT_WRAPPER_INSTALL_TIMEOUT_S = 1800
 
 
@@ -43,6 +44,7 @@ class AnkerGamesConfig:
     # ── wrapper install (drives the real client; see wrapper_install.py) ──
     launcher_appimage_path: str = _DEFAULT_LAUNCHER_APPIMAGE_PATH
     launcher_games_root: str = _DEFAULT_LAUNCHER_GAMES_ROOT
+    launcher_downloads_staging_dir: str = _DEFAULT_LAUNCHER_DOWNLOADS_STAGING_DIR
     wrapper_install_timeout_s: int = _DEFAULT_WRAPPER_INSTALL_TIMEOUT_S
 
     @property
@@ -80,6 +82,9 @@ def load_config(config: ConfigManager | None) -> AnkerGamesConfig:
         ),
         launcher_games_root=raw.get(
             "launcher_games_root", defaults.launcher_games_root,
+        ),
+        launcher_downloads_staging_dir=raw.get(
+            "launcher_downloads_staging_dir", defaults.launcher_downloads_staging_dir,
         ),
         wrapper_install_timeout_s=int(
             raw.get("wrapper_install_timeout_s", defaults.wrapper_install_timeout_s),

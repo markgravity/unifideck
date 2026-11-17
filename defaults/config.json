@@ -158,6 +158,7 @@
       "authorize_max_wait_s": 30,
       "launcher_appimage_path": "~/Applications/AnkerLauncher-0.1.30-x86_64.AppImage",
       "launcher_games_root": "~/Downloads/AnkerGames/Games",
+      "launcher_downloads_staging_dir": "~/Downloads/AnkerGames/Downloads",
       "wrapper_install_timeout_s": 1800
     }
   },
